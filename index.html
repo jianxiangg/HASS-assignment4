@@ -27,23 +27,12 @@
     height: 600px;
 	}
 	
-	#Singapore {
-		stroke-width: 0.4px;
-		stroke: white;
-	}
-	
-	.highlight {
-		stroke: yellow;
-		stroke-width: 3px;
-		opacity: 0.5;
-	}
-	
 	.tooltip {
 		display: block;
     background: #eee;
     color: #333;
     font-size: 12px;
-    top: 400px;
+    top: 420px;
 		left: 565px;
     padding: 5px;
     position: relative;
@@ -54,23 +43,59 @@
 		border: 1px solid black;
 		border-radius: 10px;
   }
-	
+		
 	#district {
 		font-weight: bold;
-		height: 40px;
-	}
-		
-	#palette {
-		stroke-width: 0.4px;
-		stroke: black;
+		height: 38px;
 	}
 	
-	#breaks {
-		text-anchor: middle;
-		font-size: 9px;
+	#legend {
+		display: block;
+    background: #eee;
+    color: #333;
+    font-size: 12px;
+    top: 228px;
+		left: 750px;
+    padding: 5px;
+    position: relative;
+    text-align: center;
+    height: 180px;
+		width: 150px;
+    z-index: 1000;
+		border: 1px solid black;
+		border-radius: 10px;
+	}
+	
+	#legend-header {
 		font-weight: bold;
+		padding-bottom: 2px;
 	}
 
+	#sublegend {
+    list-style: none;
+    padding-inline-start: 24px;
+    margin: 0;
+		text-align: left;
+	}
+	
+	.sublegend-color {
+    width: 20px;
+		height: 10px;
+    border: 1px solid #666666;
+    display: inline-block;
+	}
+
+	#Singapore {
+		stroke-width: 0.4px;
+		stroke: white;
+	}
+	
+	.highlight {
+		stroke: yellow;
+		stroke-width: 3px;
+		opacity: 0.5;
+	}	
+	
 	</style>
 	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
 </head>
@@ -126,12 +151,17 @@
 		
 	tooltip.append("div")
 		.attr("id", "count");
-
-	/*let legend = svg.append("g")
-		.attr("id", "legend")
-		.append("text")
-		.attr("x", "480")
-		.attr("y", "480");*/
+		
+	let legend = d3.select("#map")
+		.append("div")
+		.attr("id", "legend");
+		
+	legend.append("div")
+		.attr("id","legend-header")
+		.html("Legend");
+	
+	legend.append("div")
+		.attr("id","legend-values");
 	
 	function drawMap(gender) {
 	
@@ -162,10 +192,11 @@
 			let maxFemale = d3.max(data[1], d => { return d.PopFemale; }); //extract minimum popFemale value
 			let minFemale = d3.min(data[1], d => { return d.PopFemale; }); //extract maximum popFemale value
 			
-			//reset svg objects
+			//reset map and legend values
 			d3.select("#Singapore").remove();
-			d3.select("#palette").remove();
-			d3.select("#breaks").remove();
+			if(document.getElementById("sublegend")) {
+				document.getElementById("sublegend").remove();
+			}
 			
 			if (gender === "male") {	
 			
@@ -203,41 +234,22 @@
 							.classed("highlight", false);
 					})
 					
-				//legend.text("Male Population")
+				let labels = [];
+				let HTML = "";
+		
+				colour.range().forEach((i, index, array) => {
+					let range_str = Math.round(colour.invertExtent(i)[0]) + " - " + Math.round(colour.invertExtent(i)[1]);
+					if (index === (array.length - 1)) {
+            range_str = "> " + Math.round(colour.invertExtent(i)[0]);
+					}
+					labels.push('<li class="sublegend-item"><div class="sublegend-color" style="background-color: ' +
+							i + '"> </div> ' + range_str + '</li>');
+				});
+
+				HTML += '<ul id="sublegend">' + labels.join('') + '</ul>';
+				document.getElementById("legend-values").innerHTML += HTML;
 				
-				//insert colour scale bar
-				let palette = svg.append("g")
-					.attr("id","palette")
-					.selectAll("rect")
-					.data(colourScale)
-					.enter()
-					.append("rect")
-					.attr("fill", d => {
-							return d;//return rgb
-					})
-					.attr("transform", "translate(" + 520 + "," + 485 + ")")
-					.attr('x',(d,i) => {
-						return i*30;
-					})		
-					.attr('width','30')
-					.attr('height','10');
-				
-				//insert colour scale break values
-				let texts = svg.append("g")
-					.attr("id","breaks")
-					.selectAll("rect")
-					.data(colour.range())
-					.enter()
-					.append("text")
-					.attr("transform", "translate(" + 520 + "," + 505 + ")")
-					.attr("x", (d,i) => {
-						return i*30;
-					})
-					.text(d => {
-						return Math.round(colour.invertExtent(d)[0]); //to access break values
-					})
-					
-			} else {
+			} else { //if female
 			
 				let colourScale = d3.schemeReds[9];
 				
@@ -273,39 +285,21 @@
 							.classed("highlight", false);
 					})
 				
-				//legend.text("Female Population")
+				let labels = [];
+				let HTML = "";
+		
+				colour.range().forEach((i, index, array) => {
+					let range_str = Math.round(colour.invertExtent(i)[0]) + " - " + Math.round(colour.invertExtent(i)[1]);
+					if (index === (array.length - 1)) {
+            range_str = "> " + Math.round(colour.invertExtent(i)[0]);
+					}
+					labels.push('<li class="sublegend-item"><div class="sublegend-color" style="background-color: ' +
+							i + '"> </div> ' + range_str + '</li>');
+				});
+
+				HTML += '<ul id="sublegend">' + labels.join('') + '</ul>';
+				document.getElementById("legend-values").innerHTML += HTML;
 				
-				//insert colour scale bar
-				let palette = svg.append("g")
-					.attr("id","palette")
-					.selectAll("rect")
-					.data(colourScale)
-					.enter()
-					.append("rect")
-					.attr("fill", d => {
-							return d;//return rgb
-					})
-					.attr("transform", "translate(" + 520 + "," + 485 + ")")
-					.attr('x',(d,i) => {
-						return i*30;
-					})		
-					.attr('width','30')
-					.attr('height','10');
-				
-				//insert colour scale break values
-				let texts = svg.append("g")
-					.attr("id","breaks")
-					.selectAll("rect")
-					.data(colour.range())
-					.enter()
-					.append("text")
-					.attr("transform", "translate(" + 520 + "," + 505 + ")")
-					.attr("x", (d,i) => {
-						return i*30;
-					})
-					.text(d => {
-						return Math.round(colour.invertExtent(d)[0]); //to access break values
-					})		
 			}
 
 			map.on('zoomend', onZoom);
@@ -341,7 +335,6 @@
 	
 	//QUESTIONS:
 	//1. How to make position of tooltip and legend responsive?
-	//2. How to resolve the problem with the legend when I zoom and translate simultaneously?
 	
 	
 </script>
