@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+	<style>
+	.header {
+		text-align: center;
+		width: 1000px;
+		padding-bottom: 10px;
+	}
+	
+	h1 {
+		text-align: center; 
+		color: #038C9E; 
+		font-size: 28px; 
+		font-family: 'Source Sans Pro', sans-serif;
+		margin-bottom: 5px;
+		position: relative;
+	}
+		
+	#btMale, #btFemale {
+		width: 100px;
+	}
+	
+	#map {
+    width: 1000px;
+    height: 600px;
+	}
+	
+	#Singapore {
+		stroke-width: 0.4px;
+		stroke: white;
+	}
+	
+	.highlight {
+		stroke: yellow;
+		stroke-width: 3px;
+		opacity: 0.5;
+	}
+	
+	.tooltip {
+		display: block;
+    background: #eee;
+    color: #333;
+    font-size: 12px;
+    top: 400px;
+		left: 565px;
+    padding: 5px;
+    position: relative;
+    text-align: center;
+    height: 58px;
+		width: 170px;
+    z-index: 1000;
+		border: 1px solid black;
+		border-radius: 10px;
+  }
+	
+	#district {
+		font-weight: bold;
+		height: 40px;
+	}
+		
+	#palette {
+		stroke-width: 0.4px;
+		stroke: black;
+	}
+	
+	#breaks {
+		text-anchor: middle;
+		font-size: 9px;
+		font-weight: bold;
+	}
+
+	</style>
+	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+</head>
+<body>
+	<div class="header">
+		<h1>Choropleth Map of 2020 Population in Singapore Subdistricts</h1>
+		<button id="btMale">Male</button>
+		<button id="btFemale">Female</button>
+	</div>
+	<div id="map"></div>
+	<script src="https://d3js.org/d3.v6.min.js"></script>
+	<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+	<script>
+	
+	let tiles = new L.tileLayer('https://maps-{s}.onemap.sg/v3/Default/{z}/{x}/{y}.png', {
+		detectRetina: true,
+		maxZoom: 18,
+		minZoom: 11,
+		
+		//Do not remove this attribution
+		attribution: '<img src="https://docs.onemap.sg/maps/images/oneMap64-01.png" style="height:20px;width:20px;">' +
+								 'New OneMap | Map data © contributors, <a href="http://SLA.gov.sg">Singapore Land Authority</a>'
+	});
+	
+	let map = new L.Map("map", {
+		center: [1.347833, 103.809357], 
+		zoom: 11,
+		maxBounds: L.latLngBounds(L.latLng(1.1, 103.5), L.latLng(1.5, 104.3)) //bounce back to Singapore if user scroll/zoom out too far
+	}).addLayer(tiles);
+
+	let svg = d3.select(map.getPanes().overlayPane)
+		.append("svg")
+		.attr("width", 1000)
+		.attr("height", 600)
+			.append("g")
+			.attr("id","svgLayer")
+			.attr("class", "leaflet-zoom-hide");
+			
+	function projectPoint(x, y) {
+		let point = map.latLngToLayerPoint(new L.LatLng(y, x));
+		this.stream.point(point.x, point.y);
+	}
+
+	let projection = d3.geoTransform({point: projectPoint});
+	let geopath = d3.geoPath().projection(projection);
+	
+	let tooltip = d3.select("#map")            
+		.append("div")     
+		.attr("class", "tooltip");     
+
+	tooltip.append("div")
+		.attr("id", "district");
+		
+	tooltip.append("div")
+		.attr("id", "count");
+
+	/*let legend = svg.append("g")
+		.attr("id", "legend")
+		.append("text")
+		.attr("x", "480")
+		.attr("y", "480");*/
+	
+	function drawMap(gender) {
+	
+		Promise.all([d3.json("Master-Plan-2014-Subzone-Boundary.json"), d3.csv("population2020.csv")]).then(data => {
+				
+			/*for each district in json, search equivalent Subzone column from population2020.csv
+			print out district in json that has no match in csv
+			for those that match, create a new attribute in json object and assign corresponding PopMale value from csv.*/
+			data[0].features.forEach( district => {
+				let result = data[1].filter( pop => {
+					return pop.Subzone === district.properties.Name
+				});
+				if (typeof result[0] === "undefined") {
+					district.properties.popMale = null;
+					district.properties.popFemale = null;
+				} else {
+					district.properties.popMale = (result[0].PopMale === "-") ? null: result[0].PopMale;
+					district.properties.popFemale = (result[0].PopFemale === "-") ? null : result[0].PopFemale;
+				}
+			});
+			
+			data[1].forEach( d => {
+				d.PopMale = +d.PopMale; //convert column from string to integer
+				d.PopFemale = +d.PopFemale;
+			});
+			let maxMale = d3.max(data[1], d => { return d.PopMale; }); //extract minimum popMale value
+			let minMale = d3.min(data[1], d => { return d.PopMale; }); //extract maximum popMale value
+			let maxFemale = d3.max(data[1], d => { return d.PopFemale; }); //extract minimum popFemale value
+			let minFemale = d3.min(data[1], d => { return d.PopFemale; }); //extract maximum popFemale value
+			
+			//reset svg objects
+			d3.select("#Singapore").remove();
+			d3.select("#palette").remove();
+			d3.select("#breaks").remove();
+			
+			if (gender === "male") {	
+			
+				let colourScale = d3.schemeBlues[9];
+				
+				let colour = d3.scaleQuantize()
+					.domain([minMale, 20000]) //scale becomes too skewed if use max
+					.range(colourScale);
+
+				svg.append("g")
+					.attr("id", "Singapore")
+					.selectAll("path")
+					.data(data[0].features)
+					.enter()
+					.append("path")
+					.attr("d",  d => geopath(d))
+					.attr("fill", d => {
+						return colour(d.properties.popMale);
+					})
+					.classed("leaflet-interactive", true) //for mouse event in leaflet
+					.on("mouseover", (event, d) => {
+						tooltip.select("#district").html(d.properties.Name);
+						if(d.properties.popMale === null) {
+							tooltip.select("#count").html("Male Population: 0");
+						} else {
+							tooltip.select("#count").html("Male Population: " + d.properties.popMale);
+						}
+						d3.select(event.currentTarget)
+							.classed("highlight", true);
+					})
+					.on("mouseout", (event, d) => {
+						tooltip.select("#district").html("");
+						tooltip.select("#count").html("");
+						d3.select(event.currentTarget)
+							.classed("highlight", false);
+					})
+					
+				//legend.text("Male Population")
+				
+				//insert colour scale bar
+				let palette = svg.append("g")
+					.attr("id","palette")
+					.selectAll("rect")
+					.data(colourScale)
+					.enter()
+					.append("rect")
+					.attr("fill", d => {
+							return d;//return rgb
+					})
+					.attr("transform", "translate(" + 520 + "," + 485 + ")")
+					.attr('x',(d,i) => {
+						return i*30;
+					})		
+					.attr('width','30')
+					.attr('height','10');
+				
+				//insert colour scale break values
+				let texts = svg.append("g")
+					.attr("id","breaks")
+					.selectAll("rect")
+					.data(colour.range())
+					.enter()
+					.append("text")
+					.attr("transform", "translate(" + 520 + "," + 505 + ")")
+					.attr("x", (d,i) => {
+						return i*30;
+					})
+					.text(d => {
+						return Math.round(colour.invertExtent(d)[0]); //to access break values
+					})
+					
+			} else {
+			
+				let colourScale = d3.schemeReds[9];
+				
+				let colour = d3.scaleQuantize()
+					.domain([minFemale, 20000]) //scale becomes too skewed if use max
+					.range(colourScale);
+
+				svg.append("g")
+					.attr("id", "Singapore")
+					.selectAll("path")
+					.data(data[0].features)
+					.enter()
+					.append("path")
+					.attr("d",  d => geopath(d))
+					.attr("fill", d => {
+						return colour(d.properties.popFemale);
+					})
+					.classed("leaflet-interactive", true) //for mouse event in leaflet
+					.on("mouseover", (event, d) => {
+						tooltip.select("#district").html(d.properties.Name);
+						if(d.properties.popFemale === null) {
+							tooltip.select("#count").html("Female Population: 0");
+						} else {
+							tooltip.select("#count").html("Female Population: " + d.properties.popFemale);
+						}
+						d3.select(event.currentTarget)
+							.classed("highlight", true);
+					})
+					.on("mouseout", (event, d) => {
+						tooltip.select("#district").html("");
+						tooltip.select("#count").html("");
+						d3.select(event.currentTarget)
+							.classed("highlight", false);
+					})
+				
+				//legend.text("Female Population")
+				
+				//insert colour scale bar
+				let palette = svg.append("g")
+					.attr("id","palette")
+					.selectAll("rect")
+					.data(colourScale)
+					.enter()
+					.append("rect")
+					.attr("fill", d => {
+							return d;//return rgb
+					})
+					.attr("transform", "translate(" + 520 + "," + 485 + ")")
+					.attr('x',(d,i) => {
+						return i*30;
+					})		
+					.attr('width','30')
+					.attr('height','10');
+				
+				//insert colour scale break values
+				let texts = svg.append("g")
+					.attr("id","breaks")
+					.selectAll("rect")
+					.data(colour.range())
+					.enter()
+					.append("text")
+					.attr("transform", "translate(" + 520 + "," + 505 + ")")
+					.attr("x", (d,i) => {
+						return i*30;
+					})
+					.text(d => {
+						return Math.round(colour.invertExtent(d)[0]); //to access break values
+					})		
+			}
+
+			map.on('zoomend', onZoom);
+		
+			function onZoom() {
+				let bounds = geopath.bounds(data[0]),
+					topLeft = bounds[0],
+					bottomRight = bounds[1];
+
+				let svg = d3.select(map.getPanes().overlayPane).select("svg");
+							
+				svg.attr("width", bottomRight[0] - topLeft[0])
+				 .attr("height", bottomRight[1] - topLeft[1])
+				 .style("left", topLeft[0] + "px")
+				 .style("top", topLeft[1] + "px");
+					 
+				svg.select("g").attr("transform", "translate(" + -topLeft[0] + "," + -topLeft[1] + ")");
+				d3.select("g#Singapore").selectAll("path")
+				 .attr("d", d => geopath(d));
+			}
+			
+		});
+	}
+	
+	d3.select("#btMale").on("click", function() {
+		drawMap("male");
+	});
+	d3.select("#btFemale").on("click", function() {
+		drawMap("female");
+	});
+	
+	drawMap("male");
+	
+	//QUESTIONS:
+	//1. How to make position of tooltip and legend responsive?
+	//2. How to resolve the problem with the legend when I zoom and translate simultaneously?
+	
+	
+</script>
+</body>
+</html>
